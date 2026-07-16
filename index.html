@@ -32,11 +32,31 @@
       <button class="mode-btn" data-mode="words">📝 Words</button>
     </div>
 
+    <!-- Words mode: countdown and words-completed count -->
+    <div class="word-hud" id="wordHud">
+      <div class="hud-item">
+        <span class="hud-value" id="wordTimer">60</span>
+        <span class="hud-label">Seconds</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-value" id="wordScore">0</span>
+        <span class="hud-label">Words</span>
+      </div>
+    </div>
+
     <!-- Word Challenge -->
     <div class="word-challenge" id="wordChallenge">
       <span id="targetWord">TYPE THIS</span>
     </div>
-    
+
+    <!-- Shown when the countdown reaches zero -->
+    <div class="round-over" id="roundOver" role="dialog" aria-modal="true" aria-labelledby="roundOverTitle">
+      <h2 id="roundOverTitle">Time's up!</h2>
+      <p class="round-score"><span id="finalScore">0</span> words</p>
+      <button id="playAgainBtn" class="play-again">Play again</button>
+    </div>
+
+
     <canvas id="confetti-canvas" aria-hidden="true"></canvas>
     
     <!-- Floating particles background -->

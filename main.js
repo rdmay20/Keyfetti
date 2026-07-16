@@ -121,6 +121,9 @@ const WORDS = [
   'GREEN', 'WHITE', 'BLACK', 'BROWN', 'CORAL', 'CREAM', 'SMALL', 'ROUND', 'SHINY', 'FRESH'
 ];
 
+// Length of a Words round, in seconds.
+const ROUND_SECONDS = 60;
+
 // Game State
 const gameState = {
   letterCount: 0,
@@ -128,7 +131,13 @@ const gameState = {
   gameMode: 'free', // free, words
   targetWord: '',
   wordCharIndex: 0, // tracks position within current word
-  darkMode: false
+  darkMode: false,
+
+  // Words round
+  wordsCompleted: 0,
+  roundDeadline: null, // timestamp; null until the first letter is typed
+  roundTicker: null,
+  roundOver: false
 };
 
 // Shuffle-bag word picker. Random picking repeated words constantly (with N words
@@ -173,18 +182,77 @@ function nextWord() {
   renderTargetWord();
 }
 
+function updateRoundHud(secondsLeft) {
+  document.getElementById('wordTimer').textContent = secondsLeft;
+  document.getElementById('wordScore').textContent = gameState.wordsCompleted;
+  // Warn only near the end, so the colour means something.
+  document.getElementById('wordTimer').classList.toggle('urgent', secondsLeft <= 10);
+}
+
+function stopRoundTicker() {
+  if (gameState.roundTicker) {
+    clearInterval(gameState.roundTicker);
+    gameState.roundTicker = null;
+  }
+}
+
+// The clock starts on the first letter typed, not when the mode opens — a child
+// shouldn't lose seconds while still working out what to do.
+function startRoundClock() {
+  if (gameState.roundDeadline || gameState.roundOver) return;
+  gameState.roundDeadline = Date.now() + ROUND_SECONDS * 1000;
+
+  // Derive the remaining time from a deadline rather than decrementing a counter:
+  // background tabs throttle timers, so a counter would silently drift. Ticking
+  // faster than 1s keeps the display honest when the tab wakes back up.
+  gameState.roundTicker = setInterval(() => {
+    const left = Math.max(0, Math.ceil((gameState.roundDeadline - Date.now()) / 1000));
+    updateRoundHud(left);
+    if (left <= 0) endRound();
+  }, 250);
+}
+
+function endRound() {
+  stopRoundTicker();
+  gameState.roundOver = true;
+  gameState.roundDeadline = null;
+  updateRoundHud(0);
+
+  document.getElementById('wordChallenge').classList.remove('active');
+  document.getElementById('finalScore').textContent = gameState.wordsCompleted;
+  document.getElementById('roundOverTitle').textContent =
+    gameState.wordsCompleted > 0 ? "Time's up!" : "Time's up — have another go!";
+  document.getElementById('roundOver').classList.add('active');
+  document.getElementById('playAgainBtn').focus();
+  sounds.playMilestone();
+}
+
 function initWordMode() {
+  stopRoundTicker();
   gameState.letterCount = 0;
+  gameState.wordsCompleted = 0;
+  gameState.roundDeadline = null;
+  gameState.roundOver = false;
+
   document.getElementById('document').innerHTML = '';
+  document.getElementById('roundOver').classList.remove('active');
+  document.getElementById('wordHud').classList.add('active');
   document.getElementById('wordChallenge').classList.add('active');
+  updateRoundHud(ROUND_SECONDS);
   nextWord();
 }
 
 // Reset game
 function resetGame() {
+  stopRoundTicker();
   gameState.letterCount = 0;
+  gameState.roundDeadline = null;
+  gameState.roundOver = false;
+
   document.getElementById('document').innerHTML = '';
   document.getElementById('wordChallenge').classList.remove('active');
+  document.getElementById('wordHud').classList.remove('active');
+  document.getElementById('roundOver').classList.remove('active');
 }
 
 // Dark mode toggle
@@ -395,9 +463,13 @@ function renderTargetWord() {
 
     // Mode-specific handling - Word Mode
     if (gameState.gameMode === 'words') {
+      // Once the clock runs out the round is frozen until Play again.
+      if (gameState.roundOver) return;
+
       const expected = gameState.targetWord[gameState.wordCharIndex];
       if (ev.key.toUpperCase() === expected) {
         hideIntro();
+        startRoundClock();
         const completesWord = gameState.wordCharIndex + 1 >= gameState.targetWord.length;
         spawnPopLetter(ev.key.toUpperCase(), completesWord);
         gameState.wordCharIndex++;
@@ -407,9 +479,13 @@ function renderTargetWord() {
         vibrate();
 
         if (completesWord) {
+          gameState.wordsCompleted++;
+          updateRoundHud(Math.max(0, Math.ceil((gameState.roundDeadline - Date.now()) / 1000)));
           // Word complete - small delay then next word
           sounds.playCelebrate();
-          setTimeout(nextWord, 300);
+          setTimeout(() => {
+            if (!gameState.roundOver) nextWord();
+          }, 300);
         }
       }
       return;
@@ -611,6 +687,14 @@ function renderTargetWord() {
     } else {
       resetGame();
     }
+    sounds.playCelebrate();
+  });
+
+  document.getElementById('playAgainBtn').addEventListener('click', (e) => {
+    initWordMode();
+    // Drop focus, or a subsequent Space/Enter would re-trigger the button.
+    e.currentTarget.blur();
+    if (isMobile) mobileInput.focus();
     sounds.playCelebrate();
   });
 
