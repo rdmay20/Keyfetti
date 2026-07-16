@@ -3,6 +3,13 @@
    ============================ */
 
 import confetti from 'canvas-confetti';
+
+// Baloo 2, self-hosted. Only the latin subset and the three weights the CSS
+// actually uses, so the bundle doesn't carry the whole family.
+import '@fontsource/baloo-2/latin-400.css';
+import '@fontsource/baloo-2/latin-600.css';
+import '@fontsource/baloo-2/latin-800.css';
+
 import './style.css';
 
 // Simple sound synthesis (no external files needed)
@@ -78,53 +85,78 @@ class SoundManager {
 
 const sounds = new SoundManager();
 
+// Kid-friendly word list, grouped by length so Words mode ramps up gently.
+// Kept concrete and picturable — things a young child can recognise and sound out.
+const WORDS = [
+  // 3 letters
+  'CAT', 'DOG', 'SUN', 'BAT', 'HAT', 'PIG', 'CUP', 'BED', 'RUN', 'FUN',
+  'BOX', 'FOX', 'RED', 'BIG', 'TOP', 'MAP', 'BUS', 'CAR', 'JAR', 'VAN',
+  'BEE', 'COW', 'HEN', 'OWL', 'ANT', 'BUG', 'RAT', 'PUP', 'CUB', 'ELK',
+  'EGG', 'JAM', 'PIE', 'BUN', 'NUT', 'FIG', 'YAM', 'PEA', 'OAT', 'TEA',
+  'HAM', 'POT', 'PAN', 'MUG', 'TIN', 'KEY', 'BAG', 'TOY', 'PEN', 'KIT',
+  'SKY', 'SEA', 'ICE', 'MUD', 'LOG', 'AIR', 'DEW', 'FOG', 'RAY', 'GEM',
+  'ARM', 'EAR', 'EYE', 'LIP', 'TOE', 'LEG', 'HIP', 'JAW', 'RIB', 'GUM',
+  'HOP', 'JOG', 'SIT', 'NAP', 'DIG', 'ROW', 'PAT', 'HUG', 'WAG', 'ZIP',
+  'DAY', 'JOY', 'HUM', 'TAP', 'DOT', 'PIN', 'CAP', 'FAN', 'NET', 'WEB',
+
+  // 4 letters
+  'BIRD', 'FROG', 'DUCK', 'FISH', 'BEAR', 'LION', 'GOAT', 'LAMB', 'MOLE', 'CRAB',
+  'WOLF', 'DEER', 'SEAL', 'MOTH', 'WASP', 'WORM', 'TOAD', 'SWAN', 'CROW', 'DOVE',
+  'CAKE', 'MILK', 'RICE', 'CORN', 'BEAN', 'PEAR', 'PLUM', 'LIME', 'SOUP', 'SALT',
+  'MOON', 'STAR', 'RAIN', 'SNOW', 'WIND', 'LEAF', 'TREE', 'ROSE', 'SAND', 'ROCK',
+  'HAND', 'FOOT', 'HAIR', 'NOSE', 'FACE', 'KNEE', 'BACK', 'CHIN', 'PALM', 'NECK',
+  'BOOK', 'BALL', 'DOOR', 'BELL', 'DESK', 'LAMP', 'SHOE', 'SOCK', 'COAT', 'RING',
+  'BOAT', 'BIKE', 'TRAM', 'SHIP', 'KITE', 'DRUM', 'FLAG', 'GIFT', 'ROPE', 'DISH',
+  'JUMP', 'WALK', 'SKIP', 'SING', 'READ', 'PLAY', 'DRAW', 'SWIM', 'CLAP', 'GROW',
+  'WARM', 'SOFT', 'KIND', 'TALL', 'FAST', 'CALM', 'GOOD', 'BLUE', 'PINK', 'GOLD',
+
+  // 5 letters
+  'HORSE', 'SHEEP', 'MOUSE', 'TIGER', 'ZEBRA', 'KOALA', 'PANDA', 'SNAKE', 'WHALE', 'SHARK',
+  'ROBIN', 'EAGLE', 'GOOSE', 'PUPPY', 'BUNNY', 'HIPPO', 'LLAMA', 'OTTER', 'SKUNK', 'MOOSE',
+  'APPLE', 'BREAD', 'HONEY', 'GRAPE', 'PEACH', 'LEMON', 'BERRY', 'MANGO', 'OLIVE', 'CANDY',
+  'BEACH', 'CLOUD', 'RIVER', 'STONE', 'GRASS', 'PLANT', 'STORM', 'FIELD', 'EARTH', 'OCEAN',
+  'HOUSE', 'CHAIR', 'TABLE', 'CLOCK', 'BRUSH', 'PLATE', 'SPOON', 'LIGHT', 'BROOM', 'SHELF',
+  'TRAIN', 'PLANE', 'TRUCK', 'WHEEL', 'BLOCK', 'PAINT', 'MUSIC', 'STORY', 'PARTY', 'DANCE',
+  'SMILE', 'LAUGH', 'DREAM', 'HAPPY', 'SUNNY', 'MERRY', 'BRAVE', 'QUIET', 'SWEET', 'FUNNY',
+  'GREEN', 'WHITE', 'BLACK', 'BROWN', 'CORAL', 'CREAM', 'SMALL', 'ROUND', 'SHINY', 'FRESH'
+];
+
 // Game State
 const gameState = {
   letterCount: 0,
-  streak: 0,
-  bestStreak: 0,
-  startTime: null,
-  wpm: 0,
   allowAllKeys: false,
-  gameMode: 'free', // free, challenge, words
-  challengeTime: 60,
-  challengeInterval: null,
+  gameMode: 'free', // free, words
   targetWord: '',
-  wordCharIndex: 0, // tracks position within current word (fixed: was wordIndex)
-  words: ['CAT', 'DOG', 'SUN', 'BAT', 'HAT', 'PIG', 'CUP', 'BED', 'RUN', 'FUN', 'BOX', 'FOX', 'RED', 'BIG', 'TOP', 'MAP', 'BUS', 'CAR', 'JAR', 'VAN'],
+  wordCharIndex: 0, // tracks position within current word
   darkMode: false
 };
 
-// Load saved state
-function loadState() {
-  try {
-    const saved = localStorage.getItem('keyfetti-state');
-    if (saved) {
-      const data = JSON.parse(saved);
-      gameState.bestStreak = data.bestStreak || 0;
-      document.getElementById('highScore').textContent = gameState.bestStreak;
+// Shuffle-bag word picker. Random picking repeated words constantly (with N words
+// a repeat is likely within ~sqrt(N) draws), so instead we deal from a shuffled
+// bag and only reshuffle once every word has been used.
+const wordBag = {
+  queue: [],
+  lastWord: '',
+
+  refill() {
+    this.queue = WORDS.slice();
+    // Fisher-Yates
+    for (let i = this.queue.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [this.queue[i], this.queue[j]] = [this.queue[j], this.queue[i]];
     }
-  } catch (e) {}
-}
+    // Avoid a back-to-back repeat across the bag boundary.
+    if (this.queue[0] === this.lastWord && this.queue.length > 1) {
+      [this.queue[0], this.queue[1]] = [this.queue[1], this.queue[0]];
+    }
+  },
 
-// Save state
-function saveState() {
-  try {
-    localStorage.setItem('keyfetti-state', JSON.stringify({
-      bestStreak: gameState.bestStreak
-    }));
-  } catch (e) {}
-}
-
-// Calculate WPM
-function updateWPM() {
-  if (!gameState.startTime) return;
-  const minutes = (Date.now() - gameState.startTime) / 60000;
-  if (minutes > 0) {
-    gameState.wpm = Math.round(gameState.letterCount / 5 / minutes);
-    document.getElementById('wpm').textContent = gameState.wpm;
+  next() {
+    if (this.queue.length === 0) this.refill();
+    this.lastWord = this.queue.pop();
+    return this.lastWord;
   }
-}
+};
 
 // Milestone check
 function checkMilestone() {
@@ -134,96 +166,15 @@ function checkMilestone() {
   }
 }
 
-// Challenge mode
-function startChallenge() {
-  // Clean up word mode UI
-  document.getElementById('wordChallenge').classList.remove('active');
-  
-  gameState.challengeTime = 60;
-  gameState.letterCount = 0;
-  gameState.streak = 0;
-  gameState.startTime = Date.now();
-  gameState.wpm = 0;
-  document.getElementById('letterCount').textContent = '0';
-  document.getElementById('wpm').textContent = '0';
-  document.getElementById('streak').textContent = '0';
-  document.getElementById('timerDisplay').textContent = '60';
-  document.getElementById('timerDisplay').style.color = ''; // reset color
-  document.getElementById('challengeTimer').classList.add('active');
-  
-  if (gameState.challengeInterval) {
-    clearInterval(gameState.challengeInterval);
-  }
-  gameState.challengeInterval = setInterval(() => {
-    gameState.challengeTime--;
-    document.getElementById('timerDisplay').textContent = gameState.challengeTime;
-    if (gameState.challengeTime <= 10) {
-      document.getElementById('timerDisplay').style.color = '#FF6B6B';
-    }
-    if (gameState.challengeTime <= 0) {
-      endChallenge();
-    }
-  }, 1000);
-}
-
-function endChallenge() {
-  if (gameState.challengeInterval) {
-    clearInterval(gameState.challengeInterval);
-    gameState.challengeInterval = null;
-  }
-  document.getElementById('challengeTimer').classList.remove('active');
-  
-  // Save best score
-  if (gameState.letterCount > gameState.bestStreak) {
-    gameState.bestStreak = gameState.letterCount;
-    document.getElementById('highScore').textContent = gameState.bestStreak;
-    saveState();
-  }
-  
-  // Show results
-  const result = confirm(`Time's up!\n\nLetters: ${gameState.letterCount}\nWPM: ${gameState.wpm}\nBest Streak: ${gameState.streak}`);
-  
-  // Reset for new game but keep challenge mode active for next round
-  gameState.letterCount = 0;
-  gameState.streak = 0;
-  gameState.startTime = null;
-  gameState.wpm = 0;
-  document.getElementById('letterCount').textContent = '0';
-  document.getElementById('wpm').textContent = '0';
-  document.getElementById('streak').textContent = '0';
-  document.getElementById('document').innerHTML = '';
-  document.getElementById('timerDisplay').style.color = '';
-  
-  // Auto-restart challenge after dismissing dialog
-  if (result || true) { // Always restart
-    setTimeout(() => startChallenge(), 500);
-  }
-}
-
-// Word challenge mode
+// Word mode
 function nextWord() {
-  gameState.targetWord = gameState.words[Math.floor(Math.random() * gameState.words.length)];
+  gameState.targetWord = wordBag.next();
   gameState.wordCharIndex = 0;
-  document.getElementById('targetWord').textContent = gameState.targetWord;
+  renderTargetWord();
 }
 
 function initWordMode() {
-  // Clean up challenge mode UI
-  if (gameState.challengeInterval) {
-    clearInterval(gameState.challengeInterval);
-    gameState.challengeInterval = null;
-  }
-  document.getElementById('challengeTimer').classList.remove('active');
-  document.getElementById('timerDisplay').style.color = '';
-  
-  // Reset stats
   gameState.letterCount = 0;
-  gameState.streak = 0;
-  gameState.startTime = Date.now();
-  gameState.wpm = 0;
-  document.getElementById('letterCount').textContent = '0';
-  document.getElementById('wpm').textContent = '0';
-  document.getElementById('streak').textContent = '0';
   document.getElementById('document').innerHTML = '';
   document.getElementById('wordChallenge').classList.add('active');
   nextWord();
@@ -232,23 +183,7 @@ function initWordMode() {
 // Reset game
 function resetGame() {
   gameState.letterCount = 0;
-  gameState.streak = 0;
-  gameState.startTime = null;
-  gameState.wpm = 0;
-  document.getElementById('letterCount').textContent = '0';
-  document.getElementById('wpm').textContent = '0';
-  document.getElementById('streak').textContent = '0';
   document.getElementById('document').innerHTML = '';
-  
-  // Clean up challenge mode
-  if (gameState.challengeInterval) {
-    clearInterval(gameState.challengeInterval);
-    gameState.challengeInterval = null;
-  }
-  document.getElementById('challengeTimer').classList.remove('active');
-  document.getElementById('timerDisplay').style.color = '';
-  
-  // Clean up word mode
   document.getElementById('wordChallenge').classList.remove('active');
 }
 
@@ -259,8 +194,27 @@ function toggleDarkMode() {
   localStorage.setItem('keyfetti-darkmode', gameState.darkMode);
 }
 
+// Reduced motion. The confetti is drawn to a canvas, so CSS alone can't quiet it —
+// the JS has to check too. Tracked live so toggling the OS setting takes effect
+// without a reload.
+const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+const motion = {
+  get reduced() {
+    return reducedMotionQuery.matches;
+  }
+};
+reducedMotionQuery.addEventListener('change', () => {
+  const container = document.getElementById('particles');
+  if (motion.reduced) {
+    container.innerHTML = '';
+  } else {
+    createParticles();
+  }
+});
+
 // Background particles - create once
 function createParticles() {
+  if (motion.reduced) return;
   const container = document.getElementById('particles');
   if (container.querySelector('.particle')) return; // Already created
   for (let i = 0; i < 20; i++) {
@@ -281,28 +235,23 @@ function vibrate() {
   }
 }
 
-// Update stats display
-function updateStats() {
-  document.getElementById('letterCount').textContent = gameState.letterCount;
-  document.getElementById('streak').textContent = gameState.streak;
-  document.getElementById('highScore').textContent = gameState.bestStreak;
-  if (gameState.startTime && gameState.letterCount > 0) {
-    updateWPM();
-  }
+// Process a valid keypress. The count is no longer shown anywhere — it is kept
+// only so milestone celebration sounds still fire.
+function processKeypress() {
+  gameState.letterCount++;
+  checkMilestone();
 }
 
-// Process a valid keypress
-function processKeypress(char) {
-  gameState.letterCount++;
-  gameState.streak++;
-  
-  if (gameState.streak > gameState.bestStreak) {
-    gameState.bestStreak = gameState.streak;
-  }
-  
-  updateStats();
-  checkMilestone();
-  saveState();
+// Show progress through the target word so a child can see how far they've got.
+function renderTargetWord() {
+  const el = document.getElementById('targetWord');
+  el.innerHTML = '';
+  [...gameState.targetWord].forEach((ch, i) => {
+    const span = document.createElement('span');
+    span.className = i < gameState.wordCharIndex ? 'word-char done' : 'word-char';
+    span.textContent = ch;
+    el.appendChild(span);
+  });
 }
 
 // Initialize everything
@@ -313,7 +262,13 @@ function processKeypress(char) {
   const confettiCanvas = document.getElementById('confetti-canvas');
 
   const mobileInput = document.getElementById('mobileInput');
-  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  // Detect touch devices by capability rather than user-agent string. iPadOS 13+
+  // reports itself as a Mac, so the old UA sniff sent every iPad down the desktop
+  // path and never focused the input needed to raise the on-screen keyboard.
+  const isMobile =
+    (window.matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0) ||
+    navigator.maxTouchPoints > 1;
 
   // Load saved dark mode
   if (localStorage.getItem('keyfetti-darkmode') === 'true') {
@@ -329,9 +284,6 @@ function processKeypress(char) {
 
   // Mobile setup
   if (isMobile) {
-    // Hide the graphical keyboard, use native input instead
-    document.getElementById('mobileKeyboard').style.display = 'none';
-    
     setTimeout(() => mobileInput.focus(), 400);
     
     game.addEventListener('click', () => mobileInput.focus());
@@ -361,9 +313,35 @@ function processKeypress(char) {
     useWorker: true
   });
 
+  // Confetti is the whole point of the game, but it used to fire a full burst on
+  // every keypress with no ceiling — and mashing keys is exactly what small
+  // children do. Bursts are rate-limited, and sustained typing thins each burst
+  // out rather than dropping it, so fast typing still feels rewarding without
+  // piling up thousands of particles on a cheap tablet.
+  const CONFETTI_MIN_INTERVAL_MS = 60;
+  const CONFETTI_FULL_BURST = 28;
+  const CONFETTI_MIN_BURST = 6;
+  let lastConfettiAt = 0;
+  let recentBursts = 0;
+
   function fireConfetti() {
+    if (motion.reduced) return;
+
+    const now = performance.now();
+    const sinceLast = now - lastConfettiAt;
+    if (sinceLast < CONFETTI_MIN_INTERVAL_MS) return;
+
+    // Decay the recent-burst count so a pause restores the full effect.
+    recentBursts = Math.max(0, recentBursts - Math.floor(sinceLast / 300));
+    recentBursts++;
+    lastConfettiAt = now;
+
+    const particleCount = Math.round(
+      Math.max(CONFETTI_MIN_BURST, CONFETTI_FULL_BURST / Math.max(1, recentBursts * 0.5))
+    );
+
     myConfetti({
-      particleCount: 28,
+      particleCount,
       spread: 75,
       startVelocity: 36,
       gravity: 0.6,
@@ -407,14 +385,9 @@ function processKeypress(char) {
       const letters = docEl.querySelectorAll('.doc-letter');
       const last = letters[letters.length - 1];
       if (last) {
-        // Decrement count when backspacing
         if (gameState.letterCount > 0) {
           gameState.letterCount--;
         }
-        if (gameState.streak > 0) {
-          gameState.streak = 0;
-        }
-        updateStats();
         explodeLetter(last);
       }
       return;
@@ -425,13 +398,15 @@ function processKeypress(char) {
       const expected = gameState.targetWord[gameState.wordCharIndex];
       if (ev.key.toUpperCase() === expected) {
         hideIntro();
-        spawnPopLetter(ev.key.toUpperCase());
+        const completesWord = gameState.wordCharIndex + 1 >= gameState.targetWord.length;
+        spawnPopLetter(ev.key.toUpperCase(), completesWord);
         gameState.wordCharIndex++;
-        processKeypress(ev.key);
+        renderTargetWord();
+        processKeypress();
         sounds.playPop();
         vibrate();
-        
-        if (gameState.wordCharIndex >= gameState.targetWord.length) {
+
+        if (completesWord) {
           // Word complete - small delay then next word
           sounds.playCelebrate();
           setTimeout(nextWord, 300);
@@ -440,18 +415,14 @@ function processKeypress(char) {
       return;
     }
 
-    // Normal key handling (Free Mode & Challenge Mode)
-    if (!gameState.startTime) {
-      gameState.startTime = Date.now();
-    }
-
+    // Normal key handling (Free Mode)
     if (gameState.allowAllKeys) {
       // All keys mode - numbers, punctuation, letters, space
       if (/^[a-z0-9]$/i.test(ev.key) || /[.,!?;:'"()\[\]{}\-+*/=_<>@#$%^&|~`\\]/.test(ev.key) || ev.key === ' ') {
         ev.preventDefault();
         const char = ev.key === ' ' ? ' ' : ev.key.toUpperCase();
         spawnPopLetter(char);
-        processKeypress(ev.key);
+        processKeypress();
         sounds.playPop();
         vibrate();
       }
@@ -460,60 +431,16 @@ function processKeypress(char) {
       if (!/^[a-z]$/i.test(ev.key)) return;
       ev.preventDefault();
       spawnPopLetter(ev.key.toUpperCase());
-      processKeypress(ev.key);
+      processKeypress();
       sounds.playPop();
       vibrate();
     }
   });
 
-  // Mobile keyboard button clicks - FIXED: now has handlers
-  document.querySelectorAll('.key-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (isMobile) return; // Use native keyboard on mobile
-      
-      const char = btn.dataset.key;
-      hideIntro();
 
-      if (gameState.gameMode === 'words') {
-        const expected = gameState.targetWord[gameState.wordCharIndex];
-        if (char === expected) {
-          spawnPopLetter(char);
-          gameState.wordCharIndex++;
-          processKeypress(char);
-          sounds.playPop();
-          vibrate();
-          
-          if (gameState.wordCharIndex >= gameState.targetWord.length) {
-            sounds.playCelebrate();
-            setTimeout(nextWord, 300);
-          }
-        }
-        return;
-      }
-
-      if (!gameState.startTime) {
-        gameState.startTime = Date.now();
-      }
-
-      spawnPopLetter(char);
-      processKeypress(char);
-      sounds.playPop();
-      vibrate();
-
-      // Visual feedback
-      btn.style.transform = 'scale(0.9)';
-      btn.style.background = 'var(--color1)';
-      btn.style.color = 'white';
-      setTimeout(() => {
-        btn.style.transform = '';
-        btn.style.background = '';
-        btn.style.color = '';
-      }, 100);
-    });
-  });
-
-  // Spawn letter animation
-  function spawnPopLetter(char) {
+  // Spawn letter animation. completesWord adds a trailing space once the letter
+  // lands, so Words mode reads as words rather than one run-on string.
+  function spawnPopLetter(char, completesWord = false) {
     const span = document.createElement('span');
     span.className = 'pop-letter pop-enter';
     span.textContent = char;
@@ -527,6 +454,17 @@ function processKeypress(char) {
 
     popLayer.appendChild(span);
     fireConfetti();
+
+    // With reduced motion the letter still pops — it just holds in place and fades
+    // instead of flying across the screen, which is the vestibular-triggering part.
+    if (motion.reduced) {
+      setTimeout(() => {
+        span.remove();
+        appendDocLetter(char);
+        if (completesWord) appendDocSpace();
+      }, 400);
+      return;
+    }
 
     setTimeout(() => {
       const docLetterPreview = createDocLetterPreview(char);
@@ -551,22 +489,35 @@ function processKeypress(char) {
         fill: 'forwards'
       });
 
-      anim.onfinish = () => {
+      // The letter lands in the document once it finishes flying there, so the
+      // trailing space is queued here rather than at keypress time — otherwise it
+      // would land ahead of the letters still in flight.
+      //
+      // Both the animation callback and the timeout fallback race to land the
+      // letter, and either can win: a backgrounded tab throttles the animation, so
+      // the timeout fires first and onfinish arrives later on resume. Landing must
+      // therefore be idempotent, or the letter gets appended twice.
+      let landed = false;
+      const land = () => {
+        if (landed) return;
+        landed = true;
         span.remove();
         appendDocLetter(char);
+        if (completesWord) appendDocSpace();
       };
 
-      setTimeout(() => {
-        if (document.body.contains(span)) {
-          span.remove();
-          appendDocLetter(char);
-        }
-      }, 910);
+      anim.onfinish = land;
+      setTimeout(land, 910);
 
     }, 700);
   }
 
   function explodeLetter(el) {
+    if (motion.reduced) {
+      el.remove();
+      return;
+    }
+
     const rect = el.getBoundingClientRect();
     const pieces = 12;
 
@@ -629,6 +580,15 @@ function processKeypress(char) {
     pruneDocumentIfNeeded();
   }
 
+  // The document lays letters out as flex items, so a whitespace-only span would
+  // collapse to nothing. Use an explicit fixed-width gap instead.
+  function appendDocSpace() {
+    const el = document.createElement('span');
+    el.className = 'doc-space';
+    docEl.appendChild(el);
+    pruneDocumentIfNeeded();
+  }
+
   function pruneDocumentIfNeeded() {
     const letters = docEl.querySelectorAll('.doc-letter');
     if (letters.length > 1200) {
@@ -646,9 +606,7 @@ function processKeypress(char) {
   setTimeout(() => game.setAttribute('tabindex', '0'), 0);
 
   document.getElementById('restartBtn').addEventListener('click', () => {
-    if (gameState.gameMode === 'challenge') {
-      startChallenge();
-    } else if (gameState.gameMode === 'words') {
+    if (gameState.gameMode === 'words') {
       initWordMode();
     } else {
       resetGame();
@@ -682,10 +640,8 @@ function processKeypress(char) {
       e.target.classList.add('active');
       gameState.gameMode = e.target.dataset.mode;
       document.getElementById('modeSelector').classList.remove('active');
-      
-      if (gameState.gameMode === 'challenge') {
-        startChallenge();
-      } else if (gameState.gameMode === 'words') {
+
+      if (gameState.gameMode === 'words') {
         initWordMode();
       } else {
         resetGame();
@@ -699,7 +655,6 @@ function processKeypress(char) {
   });
 
   // Initialize
-  loadState();
   createParticles();
   setTimeout(() => { try { game.focus(); } catch (e) {} }, 300);
 })();
