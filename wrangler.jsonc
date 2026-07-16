@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "keyfetti",
+  "compatibility_date": "2026-07-16",
+  // Static site: no Worker script, so there is no "main". Wrangler serves the
+  // Vite build output directly off Cloudflare's asset hosting.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

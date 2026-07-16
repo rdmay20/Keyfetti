@@ -6,7 +6,26 @@
   <meta name="theme-color" content="#FF6B6B" />
   <meta name="description" content="Kids typing game - press letters and watch them pop!" />
   <title>Keyfetti Typing</title>
-  
+
+  <!-- Link previews. These are the one place the real domain is hardcoded: the
+       crawlers that build preview cards don't run JS and won't resolve a relative
+       path, so og:url and og:image have to be absolute. Everything at runtime
+       derives its links from location.origin instead (see share.js).
+
+       A ?c=12 challenge link still unfurls with this generic card rather than
+       "Can you beat 12?" — injecting a per-score og:title needs a server render,
+       which this app deliberately doesn't have. -->
+  <link rel="canonical" href="https://keyfetti.rudydogum.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://keyfetti.rudydogum.com/">
+  <meta property="og:title" content="Keyfetti — press letters, watch them pop">
+  <meta property="og:description" content="A free typing game for little kids. No ads, no sign-up, works offline.">
+  <meta property="og:image" content="https://keyfetti.rudydogum.com/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Keyfetti — colourful letters bursting with confetti">
+  <meta name="twitter:card" content="summary_large_image">
+
   <!-- Favicon -->
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.png" type="image/png">
@@ -52,8 +71,25 @@
     <!-- Shown when the countdown reaches zero -->
     <div class="round-over" id="roundOver" role="dialog" aria-modal="true" aria-labelledby="roundOverTitle">
       <h2 id="roundOverTitle">Time's up!</h2>
-      <p class="round-score"><span id="finalScore">0</span> words</p>
-      <button id="playAgainBtn" class="play-again">Play again</button>
+      <p class="round-score"><span id="finalScore">0</span> <span id="finalScoreUnit">words</span></p>
+      <p class="round-squares" id="roundSquares" aria-hidden="true"></p>
+      <div class="round-actions">
+        <button id="playAgainBtn" class="play-again">Play again</button>
+        <button id="shareBtn" class="share-btn">Share</button>
+      </div>
+      <!-- Last resort: if the clipboard API is unavailable or refused, the text is
+           revealed here so it can still be selected and copied by hand. -->
+      <p class="share-fallback" id="shareFallback"></p>
+    </div>
+
+    <!-- Landing panel for a shared ?c= challenge link. Centred rather than pinned
+         to an edge: the controls own the top-left and the HUD the top-right, and
+         this needs a decision before the round starts anyway. -->
+    <div class="challenge" id="challenge" role="dialog" aria-modal="true" aria-labelledby="challengeTitle">
+      <h2 id="challengeTitle">🏁 You've been challenged!</h2>
+      <p class="challenge-line">Someone typed <strong id="challengeCount">0</strong> words in 60 seconds.</p>
+      <p class="challenge-line challenge-ask">Can you beat it?</p>
+      <button id="challengeStartBtn" class="play-again">Let's go!</button>
     </div>
 
 

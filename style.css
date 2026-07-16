@@ -419,6 +419,134 @@ body.dark .mode-btn:hover {
   transform: scale(0.96);
 }
 
+/* The score as coloured squares — the same thing the share text pastes, so what a
+   parent sees on screen is what lands in the chat. */
+.round-squares {
+  margin: 0;
+  max-width: 300px;
+  font-size: 15px;
+  line-height: 1.4;
+  letter-spacing: 1px;
+  text-align: center;
+  word-break: break-all; /* the squares are one unbroken run; let it wrap anywhere */
+}
+
+.round-squares:empty {
+  display: none;
+}
+
+.round-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+/* Play again keeps the solid fill: it's the button the child reaches for. Share is
+   the adult's, so it sits back as an outline — the border carries the brand colour
+   while the label stays on --text.
+   Both must state colour and font explicitly: buttons inherit neither, and without
+   it the label falls back to the UA's black and vanishes against the dark panel.
+   The label is deliberately not --color1 — that red only manages ~2.8:1 against the
+   light panel, which this size and weight doesn't qualify for. */
+.share-btn {
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: 2px solid var(--color1);
+  border-radius: 12px;
+  padding: 8px 20px;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.2s;
+}
+
+/* A tint rather than a solid fill, for the same reason: white on --color1 is also
+   ~2.8:1, and a label shouldn't get harder to read the moment you reach for it.
+   (--color1 at 14%; stated as rgba so it composites over either theme's panel.) */
+.share-btn:hover {
+  background: rgba(255, 107, 107, 0.14);
+}
+
+.share-btn:active {
+  transform: scale(0.96);
+}
+
+.share-btn[hidden] {
+  display: none;
+}
+
+/* Only revealed when the clipboard write fails outright. */
+.share-fallback {
+  margin: 4px 0 0;
+  max-width: 300px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  opacity: 0.75;
+  text-align: center;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text; /* the global selectstart blocker is waived for #roundOver */
+}
+
+.share-fallback:empty {
+  display: none;
+}
+
+/* Challenge landing panel. Same recipe as .round-over — fixed, centred by
+   translate, panel background, brand border. */
+.challenge {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel-bg);
+  border: 2px solid var(--color1);
+  border-radius: 20px;
+  padding: 28px 40px;
+  max-width: min(420px, calc(100vw - 32px));
+  z-index: 45; /* above .round-over, which can never be open at the same time */
+  backdrop-filter: blur(10px);
+  box-shadow: var(--pop-shadow);
+  text-align: center;
+}
+
+.challenge.active {
+  /* Reuses round-over-in, which carries the centring translate through every
+     keyframe. A bare scale() here would drop it and fling the panel off-centre. */
+  display: flex;
+  animation: round-over-in 320ms cubic-bezier(.2,.9,.25,1) both;
+}
+
+.challenge h2 {
+  margin: 0;
+  font-size: 26px;
+  color: var(--text);
+}
+
+.challenge-line {
+  margin: 0;
+  font-size: 17px;
+  color: var(--text);
+}
+
+.challenge-line strong {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color1);
+}
+
+.challenge-ask {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
 /* Word challenge */
 .word-challenge {
   position: fixed;

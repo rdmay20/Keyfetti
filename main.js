@@ -3,6 +3,7 @@
    ============================ */
 
 import confetti from 'canvas-confetti';
+import { buildShareText, buildSquares, shareOrCopy } from './share.js';
 
 // Baloo 2, self-hosted. Only the latin subset and the three weights the CSS
 // actually uses, so the bundle doesn't carry the whole family.
@@ -137,8 +138,32 @@ const gameState = {
   wordsCompleted: 0,
   roundDeadline: null, // timestamp; null until the first letter is typed
   roundTicker: null,
-  roundOver: false
+  roundOver: false,
+
+  // Score to beat, from a shared ?c= link. Null when this isn't a challenge.
+  // Survives Play again on purpose: a child gets as many attempts at it as they want.
+  challengeTarget: null
 };
+
+// The ?c= value is the one piece of input this app takes from outside itself, and
+// it ends up on screen — so it's parsed strictly rather than trusted. Anything that
+// isn't a plain whole number in range is treated as no challenge at all.
+// (It's still only ever written to the DOM via textContent, never innerHTML.)
+const MAX_CHALLENGE = 999;
+
+function readChallengeFromUrl() {
+  const raw = new URLSearchParams(window.location.search).get('c');
+  if (raw === null) return null;
+
+  // Digits and nothing else — no sign, decimal point, exponent, whitespace or
+  // padding — so Number() can't be talked into anything surprising. The range is
+  // then the only limit, which keeps it honest if MAX_CHALLENGE ever moves.
+  if (!/^\d+$/.test(raw)) return null;
+
+  const score = Number(raw);
+  if (score < 1 || score > MAX_CHALLENGE) return null;
+  return score;
+}
 
 // Shuffle-bag word picker. Random picking repeated words constantly (with N words
 // a repeat is likely within ~sqrt(N) draws), so instead we deal from a shuffled
@@ -212,18 +237,49 @@ function startRoundClock() {
   }, 250);
 }
 
+// Assigned by the init IIFE, which owns the confetti canvas instance. endRound runs
+// from the round ticker out here at module scope and can't reach into that closure,
+// so the finale is handed out rather than reached for.
+let fireCelebration = () => {};
+
+// A round answering someone's challenge is a story with an outcome; a solo round is
+// just a score. Zero is checked first so a blank round never gets told it lost.
+function roundOverTitle(score, target) {
+  if (score === 0) return "Time's up — have another go!";
+  if (target === null) return "Time's up!";
+  if (score > target) return `🏆 You beat ${target}!`;
+  if (score === target) return `🤝 Dead heat — ${target} each!`;
+  return `So close — ${score} vs ${target}`;
+}
+
 function endRound() {
   stopRoundTicker();
   gameState.roundOver = true;
   gameState.roundDeadline = null;
   updateRoundHud(0);
 
+  const score = gameState.wordsCompleted;
+  const target = gameState.challengeTarget;
+
   document.getElementById('wordChallenge').classList.remove('active');
-  document.getElementById('finalScore').textContent = gameState.wordsCompleted;
-  document.getElementById('roundOverTitle').textContent =
-    gameState.wordsCompleted > 0 ? "Time's up!" : "Time's up — have another go!";
+  document.getElementById('finalScore').textContent = score;
+  // Scoring exactly one word is common enough on a first go to be worth the branch —
+  // and "1 words" sits badly next to share text that gets it right.
+  document.getElementById('finalScoreUnit').textContent = score === 1 ? 'word' : 'words';
+  document.getElementById('roundOverTitle').textContent = roundOverTitle(score, target);
+  document.getElementById('roundSquares').textContent = score > 0 ? buildSquares(score) : '';
+
+  // There's nothing worth sharing about a round nobody played, and ?c=0 is not a
+  // challenge anyone could lose to.
+  const shareBtn = document.getElementById('shareBtn');
+  shareBtn.hidden = score === 0;
+  shareBtn.textContent = 'Share';
+  document.getElementById('shareFallback').textContent = '';
+
   document.getElementById('roundOver').classList.add('active');
   document.getElementById('playAgainBtn').focus();
+
+  if (target !== null && score > target) fireCelebration();
   sounds.playMilestone();
 }
 
@@ -236,6 +292,11 @@ function initWordMode() {
 
   document.getElementById('document').innerHTML = '';
   document.getElementById('roundOver').classList.remove('active');
+  // A round is starting one way or another, so the challenge panel has said its
+  // piece — this also covers reaching Words mode through the menu instead of its
+  // own button. gameState.challengeTarget deliberately survives: the score to beat
+  // outlives the panel that announced it.
+  document.getElementById('challenge').classList.remove('active');
   document.getElementById('wordHud').classList.add('active');
   document.getElementById('wordChallenge').classList.add('active');
   updateRoundHud(ROUND_SECONDS);
@@ -253,6 +314,7 @@ function resetGame() {
   document.getElementById('wordChallenge').classList.remove('active');
   document.getElementById('wordHud').classList.remove('active');
   document.getElementById('roundOver').classList.remove('active');
+  document.getElementById('challenge').classList.remove('active');
 }
 
 // Dark mode toggle
@@ -350,15 +412,29 @@ function renderTargetWord() {
     document.getElementById('soundBtn').textContent = '🔇';
   }
 
+  // The on-screen keyboard has to be nursed: the input driving it is invisible, so
+  // anything that blurs it silently ends the game. Hold it open — but not while a
+  // panel is waiting on a decision. There the keyboard would cover the very thing
+  // it's meant to be read, and on the results panel a refocus every 100ms also
+  // fights the native share sheet.
+  function panelOpen() {
+    return gameState.roundOver ||
+      document.getElementById('challenge').classList.contains('active');
+  }
+
+  function focusInput() {
+    if (!panelOpen()) mobileInput.focus();
+  }
+
   // Mobile setup
   if (isMobile) {
-    setTimeout(() => mobileInput.focus(), 400);
-    
-    game.addEventListener('click', () => mobileInput.focus());
-    document.body.addEventListener('click', () => mobileInput.focus());
-    
+    setTimeout(focusInput, 400);
+
+    game.addEventListener('click', focusInput);
+    document.body.addEventListener('click', focusInput);
+
     mobileInput.addEventListener('blur', () => {
-      setTimeout(() => mobileInput.focus(), 100);
+      setTimeout(focusInput, 100);
     });
 
     // Handle virtual keyboard showing
@@ -418,6 +494,29 @@ function renderTargetWord() {
       origin: { x: 0.5, y: 0.4 }
     });
   }
+
+  // Beating a challenge earns something bigger than a keypress burst. This fires once
+  // per round at most, so it ignores the rate limiter above — but not the reduced
+  // motion check, which no burst in this file is allowed to skip.
+  fireCelebration = () => {
+    if (motion.reduced) return;
+
+    // Two cannons from the bottom corners rather than one from the middle: the
+    // round-over panel is sitting dead centre, and confetti launched behind it just
+    // disappears.
+    [0.15, 0.85].forEach((x) => {
+      myConfetti({
+        particleCount: 70,
+        spread: 60,
+        startVelocity: 55,
+        gravity: 0.8,
+        scalar: 1.1,
+        ticks: 200,
+        angle: x < 0.5 ? 60 : 120,
+        origin: { x, y: 0.9 }
+      });
+    });
+  };
 
   // Rainbow colors
   let colorIndex = 0;
@@ -698,6 +797,43 @@ function renderTargetWord() {
     sounds.playCelebrate();
   });
 
+  document.getElementById('shareBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const text = buildShareText(gameState.wordsCompleted, gameState.challengeTarget);
+
+    try {
+      const how = await shareOrCopy(text);
+      // Say nothing when the share sheet handled it — the OS already gave feedback —
+      // and nothing when it was dismissed, since that was a decision, not a failure.
+      if (how === 'copied') {
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Share'; }, 2000);
+      }
+    } catch (err) {
+      // Both paths are gone (clipboard blocked, or no share target). Show the text
+      // so it can still be copied by hand rather than leaving a dead button.
+      document.getElementById('shareFallback').textContent = text;
+      btn.textContent = 'Copy this ↓';
+    }
+  });
+
+  // The challenge panel is a landing screen, so its button starts the round outright
+  // rather than making a child find the mode menu first.
+  document.getElementById('challengeStartBtn').addEventListener('click', (e) => {
+    document.getElementById('challenge').classList.remove('active');
+    hideIntro();
+
+    gameState.gameMode = 'words';
+    document.querySelectorAll('.mode-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.mode === 'words');
+    });
+    initWordMode();
+
+    e.currentTarget.blur();
+    if (isMobile) mobileInput.focus();
+    sounds.playCelebrate();
+  });
+
   document.getElementById('toggleBtn').addEventListener('click', (e) => {
     gameState.allowAllKeys = !gameState.allowAllKeys;
     e.target.textContent = gameState.allowAllKeys ? '🌐' : '🔠';
@@ -735,10 +871,24 @@ function renderTargetWord() {
 
   // Prevent text selection
   document.addEventListener('selectstart', (e) => {
+    // Waived on the results panel: if the clipboard API is unavailable, selecting
+    // the share text by hand is the only way left to copy it.
+    if (e.target.closest && e.target.closest('#roundOver')) return;
     e.preventDefault();
   });
 
   // Initialize
   createParticles();
+
+  // Arriving from a shared link: show the score to beat before anything else. Kept in
+  // the URL rather than stripped, so a reload doesn't quietly turn the challenge into
+  // an ordinary round.
+  gameState.challengeTarget = readChallengeFromUrl();
+  if (gameState.challengeTarget !== null) {
+    document.getElementById('challengeCount').textContent = gameState.challengeTarget;
+    document.getElementById('challenge').classList.add('active');
+    document.getElementById('challengeStartBtn').focus();
+  }
+
   setTimeout(() => { try { game.focus(); } catch (e) {} }, 300);
 })();
